@@ -1,0 +1,157 @@
+const int batteryPin = A0;
+float batteryVoltage = 0.0;
+int batteryPercentage = 0;
+
+const char location[] = "서울특별시 용산구 이태원로19길 5";
+
+const int gasSensorPin = A1;
+const int coSensorPin = A2;
+const int thermistorPin = 4;
+
+const int motor1_IN1 = 8, motor1_IN2 = 9;
+const int motor2_IN1 = 12, motor2_IN2 = 13;
+
+const int switch1 = 10;
+const int switch2 = 11;
+
+const int redLED = 6;
+const int yellowLED = 7;
+
+const int buzzerPin = 5;
+
+const int ultrasonicPin = 2;
+
+const unsigned long motorRunTime = 5000;
+
+bool switch2State = false;
+bool tempTriggered = false;
+bool smsSent = false;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(thermistorPin, INPUT);
+  pinMode(motor1_IN1, OUTPUT);
+  pinMode(motor1_IN2, OUTPUT);
+  pinMode(motor2_IN1, OUTPUT);
+  pinMode(motor2_IN2, OUTPUT);
+  pinMode(switch1, INPUT_PULLUP);
+  pinMode(switch2, INPUT_PULLUP);
+  pinMode(redLED, OUTPUT);
+  pinMode(yellowLED, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(ultrasonicPin, INPUT);
+}
+
+void loop() {
+  batteryVoltage = analogRead(batteryPin) * (5.0 / 1023.0);
+  batteryPercentage = batteryVoltage >= 4.1 ? 100 : batteryVoltage >= 3.9 ? 90 : batteryVoltage >= 3.7 ? 75 : batteryVoltage >= 3.5 ? 50 : batteryVoltage >= 3.3 ? 25 : batteryVoltage >= 3.0 ? 10 : 0;
+
+  int gasValue = analogRead(gasSensorPin);
+  int coValue = analogRead(coSensorPin);
+  int thermistorValue = digitalRead(thermistorPin);
+
+  Serial.print("Battery: "); Serial.print(batteryPercentage); Serial.print("% ");
+  Serial.print("Gas: "); Serial.print(gasValue);
+  Serial.print(" CO: "); Serial.print(coValue);
+  Serial.print(" Temp: "); Serial.println(thermistorValue == LOW ? "높음" : "낮음");
+
+  int dangerCount = (coValue > 400) + (gasValue > 350) + (thermistorValue == LOW);
+
+  digitalWrite(redLED, dangerCount >= 2 ? HIGH : LOW);
+  digitalWrite(yellowLED, dangerCount == 1 ? HIGH : LOW);
+
+  if (dangerCount == 0) {
+    digitalWrite(redLED, LOW);
+    digitalWrite(yellowLED, LOW);
+    smsSent = false;
+    tempTriggered = false;
+  }
+
+  if (dangerCount >= 1 && !tempTriggered) {
+    tempTriggered = true;
+    alertBuzzer();
+    if (!smsSent) {
+      sendSMS(batteryPercentage, gasValue, coValue, thermistorValue);
+      smsSent = true;
+    }
+  }
+
+  bool switch1Pressed = digitalRead(switch1) == LOW;
+  bool switch2Pressed = digitalRead(switch2) == LOW;
+
+  if (switch1Pressed) {
+    Serial.println("스위치1 감지!");
+    moveMotor(0, 255);
+    delayWithUltrasonic(motorRunTime);
+    stopMotor();
+    delay(5000);
+    moveMotor(255, 0);
+    delayWithUltrasonic(motorRunTime);
+    stopMotor();
+  }
+
+  if (switch2Pressed) {
+    switch2State = !switch2State;
+    Serial.println(switch2State ? "스위치2 역방향" : "스위치2 정방향");
+    moveMotor(switch2State ? 0 : 255, switch2State ? 255 : 0);
+    delayWithUltrasonic(motorRunTime);
+    stopMotor();
+  }
+
+  delay(3000);
+}
+
+void moveMotor(int speed1, int speed2) {
+  analogWrite(motor1_IN1, speed1);
+  analogWrite(motor1_IN2, speed2);
+  analogWrite(motor2_IN1, speed1);
+  analogWrite(motor2_IN2, speed2);
+}
+
+void stopMotor() {
+  moveMotor(0, 0);
+}
+
+long getDistance() {
+  pinMode(ultrasonicPin, OUTPUT);
+  digitalWrite(ultrasonicPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(ultrasonicPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(ultrasonicPin, LOW);
+
+  pinMode(ultrasonicPin, INPUT);
+  return pulseIn(ultrasonicPin, HIGH) * 0.034 / 2;
+}
+
+void delayWithUltrasonic(unsigned long duration) {
+  unsigned long startTime = millis();
+  while (millis() - startTime < duration) {
+    if (getDistance() > 0 && getDistance() < 20) {
+      Serial.println("초음파 감지! 일시정지");
+      stopMotor();
+      delay(3000);
+      Serial.println("재작동");
+      moveMotor(255, 0);
+    }
+    delay(100);
+  }
+}
+
+void alertBuzzer() {
+  for (int i = 0; i < 3; i++) {
+    tone(buzzerPin, 2000);
+    delay(500);
+    noTone(buzzerPin);
+    delay(200);
+  }
+}
+
+void sendSMS(int battery, int gas, int co, int thermo) {
+  Serial.println("119 문자 발송:");
+  Serial.print("해당 위치에 화재가 발생했습니다. 위치 : "); Serial.print(location);
+  Serial.print(", 화재 차량 배터리 : "); Serial.print(battery); Serial.print("%, 일산화탄소 수치 : ");
+  Serial.print(co); Serial.print(", 유해가스 수치 : "); Serial.print(gas);
+  Serial.print(", 현재 온도 : "); Serial.println(thermo == LOW ? "높음" : "낮음");
+}
