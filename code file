@@ -148,7 +148,7 @@ void delayWithUltrasonic(unsigned long duration) {
 
       if (distance >= 20 || distance == 0) {
         Serial.println("감지 없음 -> 다시 하강");
-        moveMotor(255, 0);  // 다시 하강
+        moveMotor(255, 0);
       } else {
         Serial.println("여전히 감지됨 -> 대기");
         stopMotor();
