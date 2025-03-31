@@ -127,16 +127,38 @@ long getDistance() {
 
 void delayWithUltrasonic(unsigned long duration) {
   unsigned long startTime = millis();
+  bool descending = true;
+  moveMotor(255, 0);
+
   while (millis() - startTime < duration) {
-    if (getDistance() > 0 && getDistance() < 20) {
-      Serial.println("초음파 감지! 일시정지");
+    long distance = getDistance();
+    
+    if (distance > 0 && distance < 20) {
+      Serial.println("초음파 감지! 정지 후 1초 상승");
+
       stopMotor();
-      delay(3000);
-      Serial.println("재작동");
-      moveMotor(255, 0);
+      delay(1000);
+
+      moveMotor(0, 255);
+      delay(1000);
+
+      stopMotor();
+      delay(500);
+      distance = getDistance();
+
+      if (distance >= 20 || distance == 0) {
+        Serial.println("감지 없음 -> 다시 하강");
+        moveMotor(255, 0);  // 다시 하강
+      } else {
+        Serial.println("여전히 감지됨 -> 대기");
+        stopMotor();
+      }
     }
+
     delay(100);
   }
+
+  stopMotor();
 }
 
 void alertBuzzer() {
